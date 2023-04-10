@@ -48,6 +48,53 @@ The stack is implicit in those function calls.
 8
 ```
 
+```
+#lang scheme
+
+(define member?-cps
+  (lambda (item lst k)
+    (cond
+     ((null? lst) (k #f))
+     ((eq? item (car lst)) (k #t))
+     (else (member?-cps item
+                        (cdr lst)
+                        k)))))
+
+(member?-cps 'a '(c b a) (lambda (x) x))
+
+(define list-sum
+  (lambda (lst k)
+    (if (null? lst)
+        (k 0)
+        (list-sum (cdr lst)
+                  (lambda (v)
+                    (k (+ v (car lst))))))))
+
+(list-sum '(1 2 3) (lambda (x) x))
+
+(define power
+  (lambda (n m k)
+    (if (= m 0)
+        (k 1)
+        (power n
+               (- m 1)
+               (lambda (v)
+                 (k (* v n)))))))
+
+(power 2 3 (lambda (x) x))
+
+(define map
+  (lambda (f lst k)
+    (if (null? lst)
+        (k '())
+        (map f
+             (cdr lst)
+             (lambda (v)
+               (k (cons (f (car lst)) v)))))))
+
+(map list '(1 2 3) (lambda (x) x))
+```
+
 Resources:
 * [Introduction to Continuations (YouTube video)](https://youtu.be/DW3TEyAScsY)
 * [Continuations: The Swiss Army Knife of Flow Control (YouTube video)](https://youtu.be/Ju3KKu_mthg)
