@@ -211,6 +211,34 @@ Any program that uses `call/cc` can be rewritten in CPS without `call/cc`:
 ```
 [source](https://homes.cs.aau.dk/~normark/pp/other-paradigms-continuations-slide-catch-throw-ex.html)
 
+## Another example
+```scheme
+(define retry #f)
+
+(define factorial
+  (lambda (x)
+    (if (= x 0)
+        (call/cc (lambda (k) (set! retry k) 1))
+        (* x (factorial (- x 1))))))
+```
+With this definition, factorial works as we expect factorial to work, except it has the side effect of assigning retry.
+```
+(factorial 4) => 24
+(retry 1) => 24
+(retry 2) => 48
+```
+
+The continuation bound to retry might be described as "Multiply the value by 1, then multiply this result by 2, then multiply
+this result by 3, then multiply this result by 4." If we pass the continuation a different value, i.e., not 1, we will
+cause the base value to be something other than 1 and hence change the end result.
+```
+(retry 2) => 48
+(retry 5) => 120
+```
+This mechanism could be the basis for a breakpoint package implemented with `call/cc`; each time a breakpoint is encountered,
+the continuation of the breakpoint is saved so that the computation may be restarted from the breakpoint (more than once, if desired).
+[source](https://homes.cs.aau.dk/~normark/pp/other-paradigms-continuations-slide-catch-throw-ex.html)
+
 Resources:
 * [Introduction to Continuations (YouTube video)](https://youtu.be/DW3TEyAScsY)
 * [Continuations: The Swiss Army Knife of Flow Control (YouTube video)](https://youtu.be/Ju3KKu_mthg)
