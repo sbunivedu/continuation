@@ -147,6 +147,23 @@ the application of `call/cc`.
 ;(product '(1 2 3 4 5)) => 120
 ;(product '(7 3 8 0 1 9 5)) => 0
 ```
+
+Another example:
+```scheme
+(define (find-even lst)
+  (call/cc
+   (lambda (exit)
+     (define (helper lst)
+       (if (null? lst)
+           #f
+           (if (even? (car lst))
+               (exit (car lst))
+               (helper (cdr lst)))))
+     (helper lst))))
+
+;(find-even '(1 3 5 8 9)) => 8
+```
+
 [source](https://www.scheme.com/tspl4/further.html#g63)
 
 CPS also allows a procedure to take separate "success" and "failure" continuations,
@@ -159,8 +176,7 @@ unless the second argument (the divisor) is zero, in which case it passes an err
   (lambda (x y success failure)
     (if (= y 0)
         (failure "divide by zero")
-        (let ([q (quotient x y)])
-          (success q (- x (* q y)))))))
+        (success (quotient x y) (remainder x y)))))
 
 ;(integer-divide 10 3 list (lambda (x) x)) => (3 1)
 ;(integer-divide 10 0 list (lambda (x) x)) => "divide by zero"
@@ -186,28 +202,46 @@ Any program that uses `call/cc` can be rewritten in CPS without `call/cc`:
 ## A catch and throw example
 
 ```scheme
+; a list-length definition in direct style
+(define list-length
+  (lambda (lst)
+    (if (null? lst)
+        0
+        (+ 1 (list-length (cdr lst))))))
+
+;(list-length '(a b c)) => 3
+;(list-length '(a b . c)) => cdr: contract violation
+```
+```scheme
 ; this is not valid Scheme code
-#;(define (list-length lst)
+(define (list-length lst)
   (catch 'exit
-    (letrec ((list-length1
-              (lambda (lst)
-                (cond ((null? lst) 0)
-                      ((pair? lst) (+ 1 (list-length1 (cdr lst))))
-                      (else (throw 'exit 'improper-list))))))
-      (list-length1 lst))))
+         (letrec ((helper
+                   (lambda (lst)
+                     (cond ((null? lst) 0)
+                           ((pair? lst) (+ 1 (helper (cdr lst))))
+                           (else (throw 'exit 'improper-list))))))
+           (helper lst))))
+```
+```scheme
+#lang scheme
 
 (define (list-length lst)
   (call/cc
    (lambda (proc)
-     (letrec ((list-length1
+     (letrec ((helper
                (lambda (lst)
                  (cond ((null? lst) 0)
-                       ((pair? lst) (+ 1 (list-length1 (cdr lst))))
+                       ((pair? lst) (+ 1 (helper (cdr lst))))
                        (else (proc 'improper-list))))))
-       (list-length1 lst)))))
+       (helper lst)))))
 
 ;(list-length '(a b c)) => 3
 ;(list-length '(a b . c)) => 'improper-list
+```
+
+This example can be written without `call/cc` as follows:
+```
 ```
 [source](https://homes.cs.aau.dk/~normark/pp/other-paradigms-continuations-slide-catch-throw-ex.html)
 
@@ -228,7 +262,7 @@ With this definition, factorial works as we expect factorial to work, except it 
 (retry 2) => 48
 ```
 
-The continuation bound to retry might be described as "Multiply the value by 1, then multiply this result by 2, then multiply
+The continuation bound to "retry" might be described as "Multiply the value by 1, then multiply this result by 2, then multiply
 this result by 3, then multiply this result by 4." If we pass the continuation a different value, i.e., not 1, we will
 cause the base value to be something other than 1 and hence change the end result.
 ```
@@ -238,6 +272,86 @@ cause the base value to be something other than 1 and hence change the end resul
 This mechanism could be the basis for a breakpoint package implemented with `call/cc`; each time a breakpoint is encountered,
 the continuation of the breakpoint is saved so that the computation may be restarted from the breakpoint (more than once, if desired).
 [source](https://homes.cs.aau.dk/~normark/pp/other-paradigms-continuations-slide-catch-throw-ex.html)
+
+## Simulate exceptions (try/catch)
+```scheme
+(define (try/catch try-block catch-block)
+  (call/cc (lambda (throw)
+             (try-block (lambda (err) (catch-block err throw))))))
+
+(define (example)
+  (try/catch
+   (lambda (throw)
+     (display "Enter a number: ")
+     (let ((input (read)))
+       (if (not (number? input))
+           (throw "Invalid input!")      ;; Jump to catch block
+           (display "Success!"))))
+   (lambda (err throw)
+     (display "Caught an error: ")
+     (display err))))
+```
+
+## Use `call/cc` for multiple returns
+You can store a continuation for later use, allowing functions to "jump back" to a saved state.
+
+```scheme
+(define saved-cont #f)
+
+(define (test-cont)
+  (call/cc (lambda (k)
+             (set! saved-cont k)  ;; Save continuation
+             0)))  ;; Initial return value
+
+(test-cont)     => 0   ;; First call, returns 0
+(saved-cont 10) => 10  ;; Jumps back and returns 10
+(saved-cont 99) => 99  ;; Jumps back again, returns 99
+```
+
+## Implement backtracking
+```scheme
+#lang scheme
+
+(define (find-path grid)
+  (let ((rows (length grid))
+         (cols (length (car grid)))
+         (path '())  ;; Stores the successful path
+         (failed-cont #f))  ;; Stores the continuation for backtracking
+
+    (define (in-bounds? x y)
+      (and (>= x 0) (< x rows) (>= y 0) (< y cols)))
+
+    (define (is-open? x y)
+      (and (in-bounds? x y) (= (list-ref (list-ref grid x) y) 0)))
+
+    (define (move x y k)
+      (if (is-open? x y)
+          (call/cc (lambda (abort)
+                     (set! failed-cont abort)  ;; Save backtrack point
+                     (set! path (cons (list x y) path))  ;; Add position to path
+                     (if (and (= x (- rows 1)) (= y (- cols 1)))
+                         (k path)  ;; Found goal → return path
+                         (begin
+                           (move (+ x 1) y k)  ;; Try moving down
+                           (move x (+ y 1) k)  ;; Try moving right
+                           (move (- x 1) y k)  ;; Try moving up
+                           (move x (- y 1) k)  ;; Try moving left
+                           (set! path (cdr path))  ;; Remove failed move
+                           (failed-cont 'fail))))) ;; Backtrack if all fail
+          #f))
+
+    (call/cc (lambda (k)
+               (move 0 0 k)
+               'no-path))))  ;; If no path is found
+
+;; Example grid
+(define grid '((0 0 1 0)
+               (1 0 1 0)
+               (1 0 0 0)
+               (1 1 1 0)))
+
+;(find-path grid) => ((3 3) (2 3) (2 2) (2 1) (1 1) (0 1) (0 0))
+```
 
 Resources:
 * [Introduction to Continuations (YouTube video)](https://youtu.be/DW3TEyAScsY)
