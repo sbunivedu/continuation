@@ -240,9 +240,6 @@ Any program that uses `call/cc` can be rewritten in CPS without `call/cc`:
 ;(list-length '(a b . c)) => 'improper-list
 ```
 
-This example can be written without `call/cc` as follows:
-```
-```
 [source](https://homes.cs.aau.dk/~normark/pp/other-paradigms-continuations-slide-catch-throw-ex.html)
 
 ## Another example
