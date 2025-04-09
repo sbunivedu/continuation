@@ -134,15 +134,20 @@ the application of `call/cc`.
 ## Use of call/cc to provide a nonlocal exit from a recursion
 
 ```scheme
+(require racket/trace)
 (define product
-  (lambda (ls)
+  (lambda (lst)
     (call/cc
       (lambda (break)
-        (let f ([ls ls])
-          (cond
-            [(null? ls) 1]
-            [(= (car ls) 0) (break 0)]
-            [else (* (car ls) (f (cdr ls)))]))))))
+        (define helper
+          (lambda (lst)
+            (if (null? lst)
+                1
+                (if (= 0 (car lst))
+                    (break 0)
+                    (* (car lst) (helper (cdr lst)))))))
+        (trace helper)
+        (helper lst)))))
 
 ;(product '(1 2 3 4 5)) => 120
 ;(product '(7 3 8 0 1 9 5)) => 0
